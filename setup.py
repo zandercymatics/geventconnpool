@@ -5,10 +5,10 @@ with open('README.rst') as file:
     long_description = file.read()
 
 setup(name='geventconnpool',
-    version = "0.2.1",
+    version = "0.2.2",
     description = 'TCP connection pool for gevent',
     long_description = long_description,
-    url="https://github.com/rasky/geventconnpool",
+    url="https://github.com/zandercymatics/geventconnpool/",
     author="Giovanni Bajo",
     author_email="rasky@develer.com",
     packages=find_packages('src'),
