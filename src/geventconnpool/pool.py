@@ -2,7 +2,7 @@ import logging
 
 import gevent
 from gevent.lock import BoundedSemaphore
-from gevent import socket
+from gevent import Timeout, socket
 from collections import deque
 from contextlib import contextmanager
 from functools import wraps
@@ -23,22 +23,19 @@ class ConnectionPool(object):
     # Frequency at which the pool is populated at startup
     SPAWN_FREQUENCY = 0.1
 
-    def __init__(self, size, exc_classes=DEFAULT_EXC_CLASSES, keepalive=None):
+    def __init__(self, size, exc_classes=DEFAULT_EXC_CLASSES, keepalive=None, timeout=60):
         self.size = size
         self.conn = deque()
         self.lock = BoundedSemaphore(size)
         self.keepalive = keepalive
+        self.timeout = timeout
         # Exceptions list must be in tuple form to be caught properly
         self.exc_classes = tuple(exc_classes)
         # http://stackoverflow.com/a/31136897/357578
-        try:
-            xrange
-        except NameError:
-            xrange = range
-        for i in xrange(size):
+        for i in range(size):
             self.lock.acquire()
-        for i in xrange(size):
-            gevent.spawn_later(self.SPAWN_FREQUENCY*i, self._addOne)
+        for i in range(size):
+            gevent.spawn_later(self.SPAWN_FREQUENCY*i, self._add_one)
         if self.keepalive:
             gevent.spawn(self._keepalive_periodic)
 
@@ -59,7 +56,7 @@ class ConnectionPool(object):
 
     def _keepalive_periodic(self):
         delay = float(self.keepalive) / self.size
-        while 1:
+        while True:
             try:
                 with self.get() as c:
                     self._keepalive(c)
@@ -68,9 +65,9 @@ class ConnectionPool(object):
                 pass
             gevent.sleep(delay)
 
-    def _addOne(self):
+    def _add_one(self):
         stime = 0.1
-        while 1:
+        while True:
             c = self._new_connection()
             if c:
                 break
@@ -92,11 +89,12 @@ class ConnectionPool(object):
         """
         self.lock.acquire()
         try:
+            
             c = self.conn.popleft()
             yield c
         except self.exc_classes:
             # The current connection has failed, drop it and create a new one
-            gevent.spawn_later(1, self._addOne)
+            gevent.spawn_later(1, self._add_one)
             raise
         except:
             self.conn.append(c)
@@ -107,7 +105,6 @@ class ConnectionPool(object):
             # if it failed (socket.error)
             self.conn.append(c)
             self.lock.release()
-
 
 def retry(f, exc_classes=DEFAULT_EXC_CLASSES, logger=None,
           retry_log_level=logging.INFO,
